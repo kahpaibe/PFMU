@@ -1,7 +1,8 @@
 """ Declares the classes for objects related to pyfreedbutil. """
 
-import discid_lib
 from numpy import uint32  # unsigned 32-bit integer
+
+from . import discid_lib
 
 
 # general purpose functions
@@ -41,13 +42,13 @@ class AudioTrack:
     """An audio track."""
 
     # Fields
-    sector_count: int = 0
+    frame_count: int = 0
     artist: str = ""
     title: str = ""
 
     # init
-    def __init__(self, sector_count: int, artist: str = "", title: str = "") -> None:
-        self.sector_count = sector_count  # required
+    def __init__(self, frame_count: int, artist: str = "", title: str = "") -> None:
+        self.frame_count = frame_count  # required
         self.artist = artist
         self.title = title
 
@@ -60,10 +61,10 @@ class AudioTrack:
             if s != "":
                 s += " - "
             s += self.title
-        if self.sector_count >= 0:
+        if self.frame_count >= 0:
             if s != "":
                 s += " - "
-            track_length = self.sector_count * 75  # convert to seconds
+            track_length = self.frame_count * 75  # convert to seconds
             s += format_track_length(track_length)
 
         return s
@@ -90,6 +91,22 @@ class AudioTrackGroup:
             s += f"{format_number_length(track_number,2)}: {self.tracks[track_id]}\n"
 
         return s
+
+    def get_offsets_plus(self, lead_in: int = 150) -> list[int]:
+        """Get the offsets of the tracks, including the lead_out.
+
+        Args:
+            lead_in (int, optional): The lead-in of the CD, in frames. Defaults to 150 frames.
+        """
+        if not self.tracks:
+            raise ValueError("The AudioTrackGroup has no tracks.")
+        else:
+            current_offset = lead_in
+            offsets = [current_offset]
+            for i in range(0, len(self.tracks)):
+                current_offset += self.tracks[i].frame_count
+                offsets.append(current_offset)
+            return offsets
 
 
 class AudioAlbum(AudioTrackGroup):
@@ -143,22 +160,22 @@ class AudioAlbum(AudioTrackGroup):
         if not self.tracks:
             raise ValueError("The album has no tracks.")
         else:
-            current_sector = 150
-            track_sector_indexes_plus = [2 * discid_lib.SECTOR_RATE]  # lead-in
+            current_frame = 150
+            track_frame_indexes_plus = [2 * discid_lib.FRAME_RATE]  # lead-in
             for i in range(len(self.tracks)):
-                current_sector += self.tracks[i].sector_count
-                track_sector_indexes_plus.append(current_sector)
+                current_frame += self.tracks[i].frame_count
+                track_frame_indexes_plus.append(current_frame)
 
-            return discid_lib.calculate_disc_id(track_sector_indexes_plus)
+            return discid_lib.calculate_disc_id(track_frame_indexes_plus)
 
     def get_hex_disc_id(self) -> str:
         """Calculates the disc id for the album, which is used to query the freedb server. Hexadecimal representation of the disc id is returned."""
         return hex(self.get_disc_id())
 
 
-# test
-track_1 = AudioTrack(21814 - 150)
-track_2 = AudioTrack(43219 - 21814)
+# # test
+# track_1 = AudioTrack(21814 - 150)
+# track_2 = AudioTrack(43219 - 21814)
 
-album = AudioAlbum([track_1, track_2], title="Test Album", artists="Test Artist")
-print((album.get_disc_id()))
+# album = AudioAlbum([track_1, track_2], title="Test Album", artists="Test Artist")
+# print((album.get_offsets_plus()))

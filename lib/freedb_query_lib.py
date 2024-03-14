@@ -1,16 +1,15 @@
 """ Tools to query freedb servers. """
 
-# Params
-CDDB_SERVERS = [
-    "http://gnudb.gnudb.org/~cddb/cddb.cgi",
-    "http://freedb.freedb.org/~cddb/cddb.cgi",
-]
+import re
+from typing import Any, Literal, Union
 
-DEFAULT_USER = "pyfreedbutil"
-DEFAULT_HOST = "pyfreedbutil_instance1"
-DEFAULT_APP = "pyfreedbutil"
-DEFAULT_VERSION = "0.0.2"
-DEFAULT_PROTOCOL = 5
+from . import freedblib_info
+from .freedb_Objects import AudioAlbum
+
+# samples
+# query -> 2: http://gnudb.gnudb.org/~cddb/cddb.cgi?cmd=cddb+query+0D023E02+2+150+21815+576&hello=emailname+emailhost.com+applicationname+0.1&proto=5
+# read1:  http://gnudb.gnudb.org/~cddb/cddb.cgi?cmd=cddb+read+soundtrack+0D023E02&hello=emailname+emailhost.com+applicationname+0.1&proto=5
+# read2:  http://gnudb.gnudb.org/~cddb/cddb.cgi?cmd=cddb+read+blues+0D023E02&hello=emailname+emailhost.com+applicationname+0.1&proto=5
 
 
 def int_to_hex(i: int, do_show_0x: bool = False) -> str:
@@ -34,102 +33,221 @@ def int_to_hex(i: int, do_show_0x: bool = False) -> str:
 class Freedb_Query:
     """A query to send to a freedb server."""
 
+    # goal: http://gnudb.gnudb.org/~cddb/cddb.cgi?cmd=cddb+query+0D023E02+2+150+21815+576&hello=emailname+emailhost.com+applicationname+0.1&proto=5
+
     disc_type = 1  # always 1
     user = ""
+    user_email = ""
     host = ""
     app = ""
     version = ""
-    protocol = 5
+    protocol = "5"
 
     def __init__(
         self,
-        user: str = DEFAULT_USER,
-        host: str = DEFAULT_HOST,
-        app: str = DEFAULT_APP,
-        version: str = DEFAULT_VERSION,
-        protocol: int = DEFAULT_PROTOCOL,
+        album: AudioAlbum,
+        query_type: Union[Literal["query"], Literal["read"]] = "query",
+        category: freedblib_info.FREEDB_CATEGORIES_TYPE = "rock",
+        user: str = freedblib_info.DEFAULT_USER,
+        user_email: str = freedblib_info.DEFAULT_USER_EMAIL,
+        host: str = freedblib_info.DEFAULT_HOST,
+        app: str = freedblib_info.DEFAULT_APP,
+        version: str = freedblib_info.DEFAULT_VERSION,
+        protocol: str = freedblib_info.DEFAULT_PROTOCOL,
     ) -> None:
+        """Initialize the query.
+
+        Args:
+            album (AudioAlbum): The album to query for.
+            category (freedblib_info.FREEDB_CATEGORIES_TYPE, optional, for "read" query type only): The category of the album. Defaults to "rock".
+            user (str, optional): The user name. Defaults to DEFAULT_USER.
+            user_email (str, optional): The user email. Defaults to DEFAULT_USER_EMAIL.
+            host (str, optional): The host. Defaults to DEFAULT_HOST.
+            app (str, optional): The app name. Defaults to DEFAULT_APP.
+            version (str, optional): The app version. Defaults to DEFAULT_VERSION.
+            protocol (int, optional): The protocol version. Defaults to DEFAULT_PROTOCOL.
+            query_type (str, Literal["query"] or Literal["read"]). Query type. Defaults to "query".
+        """
+        self.album = album
         self.user = user
+        self.user_email = user_email
         self.host = host
         self.app = app
         self.version = version
         self.protocol = protocol
+        self.query_type = query_type
+        self.category = category
+
+    def get_query_string(self, url: str) -> str:
+        """Generates the query string to send to the server.
+
+        Args:
+            url (str): The url of the server.
+        """
+        # get the disc id
+        disc_id = int_to_hex(int(self.album.get_disc_id()), False)
+
+        # get the track count
+        track_count = len(self.album.tracks)
+
+        # get the track offsets
+        track_offsets = self.album.get_offsets_plus()
+
+        # get album length in seconds
+        album_length = track_offsets[-1] // 75
+
+        if self.query_type == "query":
+            # for queries
+            query_str = f"{url}?cmd=cddb+query+{disc_id}+{track_count}"
+            for i in range(len(track_offsets) - 1):
+                query_str += f"+{track_offsets[i]}"
+            query_str += f"+{album_length}&hello={self.user}+{self.user_email}+{self.app}+{self.version}&proto={self.protocol}"
+            return query_str
+        elif self.query_type == "read":
+            # for reads
+            # http://gnudb.gnudb.org/~cddb/cddb.cgi?cmd=cddb+read+rock+12345678&hello=joe+my.host.com+xmcd+2.1&proto=3
+            query_str = f"{url}?cmd=cddb+read+{self.category}+{disc_id}"
+            query_str += f"&hello={self.user}+{self.host}+{self.app}+{self.version}&proto={self.protocol}"
+
+            return query_str
+        else:
+            raise ValueError("Invalid query type. Should not happend !")
 
 
 class Freedb_Query_Generator:
     """Quickly generates a Freedb_Query by saving user informations."""
 
+    disc_type = 1  # always 1
     user = ""
+    user_email = ""
     host = ""
     app = ""
     version = ""
-    protocol = 5
+    protocol = "5"
 
     def __init__(
         self,
-        user: str = DEFAULT_USER,
-        host: str = DEFAULT_HOST,
-        app: str = DEFAULT_APP,
-        version: str = DEFAULT_VERSION,
-        protocol: int = DEFAULT_PROTOCOL,
+        query_type: Union[Literal["query"], Literal["read"]] = "query",
+        category: freedblib_info.FREEDB_CATEGORIES_TYPE = "rock",
+        user: str = freedblib_info.DEFAULT_USER,
+        user_email: str = freedblib_info.DEFAULT_USER_EMAIL,
+        host: str = freedblib_info.DEFAULT_HOST,
+        app: str = freedblib_info.DEFAULT_APP,
+        version: str = freedblib_info.DEFAULT_VERSION,
+        protocol: str = freedblib_info.DEFAULT_PROTOCOL,
     ) -> None:
+        """Initialize the query generator.
+
+        Args: Like a query, without the album
+            user (str, optional): The user name. Defaults to DEFAULT_USER.
+            user_email (str, optional): The user email. Defaults to DEFAULT_USER_EMAIL.
+            host (str, optional): The host. Defaults to DEFAULT_HOST.
+            app (str, optional): The app name. Defaults to DEFAULT_APP.
+            version (str, optional): The app version. Defaults to DEFAULT_VERSION.
+            protocol (str, optional): The protocol version. Defaults to DEFAULT_PROTOCOL.
+        """
         self.user = user
+        self.user_email = user_email
         self.host = host
         self.app = app
         self.version = version
         self.protocol = protocol
+        self.query_type: Literal["query"] | Literal["read"] = query_type
+        self.category: freedblib_info.FREEDB_CATEGORIES_TYPE = category
 
-    def generate_query(self) -> Freedb_Query:
-        """Generates a Freedb_Query with the stored informations.
+    def generate_query(self, album: AudioAlbum) -> Freedb_Query:
+        """Generates a Freedb_Query with the given album.
+
+        Args:
+            album (AudioAlbum): The album to query for.
 
         Returns:
             Freedb_Query: The generated query."""
-        return Freedb_Query(self.user, self.host, self.app, self.version, self.protocol)
-
-    def get_query_url(self, freedb_server_url: str):
-        """Generates the url to send the query to the server.
-
-        Args:
-            freedb_server_url (str): The url of the server.
-
-        Returns:
-            str: The generated url."""
-        return f"{freedb_server_url}?cmd=cddb+query+E512640F+15+150+23780+56867+73962+96577+124515+141320+156755+178960+204585+236400+259287+289755+315007+338777+4710&hello={self.user}+{self.host}+{self.app}+{self.version}&proto={self.protocol}"
+        return Freedb_Query(
+            album,
+            query_type=self.query_type,
+            category=self.category,
+            user=self.user,
+            user_email=self.user_email,
+            host=self.host,
+            app=self.app,
+            version=self.version,
+            protocol=self.protocol,
+        )
 
 
 class Freedb_Server:
     """A class to query a freedb server."""
 
-    freedb_server_url = ""
+    pass
 
-    def __init__(self, freedb_server: str) -> None:
-        self.freedb_server_url = freedb_server
 
-    def query(self, query: Freedb_Query) -> str:
-        """Send a query to the server.
+class Freedb_Query_Query_Reader:
+    """A class to read the result of a "query"-type query."""
+
+    re_get_body: re.Pattern[str]
+    re_tripplets: re.Pattern[str]
+
+    def __init__(self) -> None:
+        """"""
+        self.re_get_body: re.Pattern[str] = re.compile(
+            r"^(\d{1,4})\sFound .+?, list follows \(until terminating `.'\) (.*) \.$"
+        )
+        self.re_tripplets = re.compile(
+            r"("
+            + freedblib_info.FREEDB_CATEGORIES_REGEX_PREGROUP
+            + r") (?:[0-9a-fA-F]{8}) ([^\/]+?) / ([^\/]+?) (?="
+            + freedblib_info.FREEDB_CATEGORIES_REGEX_PREGROUP
+            + r")"
+        )
+
+    def get_query_triplets(
+        self, query_result: str
+    ) -> tuple[str, list[tuple[str, str, str]]] | list[None]:
+        """Parses the query result to get the query triplets.
 
         Args:
-            query (freedb_query): The query to send.
+            query_result (str): The result of the query.
 
         Returns:
-            str: The response from the server."""
-        return "response"  # TODO
+            tuple[str,list[tuple[str, str, str]]]
+                str, return code
+                tuple[str,str,str], the query triplets. Empty if none.
+
+            A triplet is a list of 3 strings: [category, title]
+        """
+
+        # get the body of the query
+        match = self.re_get_body.match(query_result.strip())
+        if match is None:
+            print("Match is None !")
+            return []
+        else:
+            print("Match is not None yet...")
+            response_code = match.group(1)
+            body = match.group(2) + " blues"
+        # get the triplets
+
+        triplets: list[tuple[str, str, str]] = self.re_tripplets.findall(body)
+
+        return response_code, triplets
 
 
-# example url http://gnudb.gnudb.org/~cddb/cddb.cgi?cmd=cddb+query+E512640F+15+150+23780+56867+73962+96577+124515+141320+156755+178960+204585+236400+259287+289755+315007+338777+4710&hello=LeoG+DESKTOP-MI21S05+PythonCddbServer+1.1.0&proto=5
-# if discid:
-#     self.track_offset = map(int, discid.split()[2:-1])
-#     self.disc_length = int(discid.split()[-1:][0]) * 75
-#     query = urllib.parse.quote_plus(discid.rstrip())
-#     url = "%s?cmd=cddb+query+%s&hello=%s+%s+%s+%s&proto=%d" % (
-#         self.cddbServer,
-#         query,
-#         self.user,
-#         self.host,
-#         self.app,
-#         self.version,
-#         self.protocol,
-#     )
-#     res = urllib.request.urlopen(url)
-#     print(f"url={url}")
-#     header = res.readline().decode("latin-1").rstrip()
+class Freedb_Query_Read_Reader:
+    """A class to read the result of a "read"-type query."""
+
+    re_get_body: re.Pattern[str]
+    re_tripplets: re.Pattern[str]
+
+    def __init__(self) -> None:
+        """"""
+        self.re_get_body: re.Pattern[str] = re.compile(
+            r"^(\d{1,4})\sFound .+?, list follows \(until terminating `.'\) (.*) \.$"
+        )
+        self.re_releases = re.compile(r"")
+
+    def get_read_releases(
+        self, query_result: str
+    ) -> tuple[str, list[list[Any]]] | list[None]:
+
+        return []
