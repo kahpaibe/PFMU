@@ -9,7 +9,7 @@ from .freedb_Objects import AudioAlbum
 # samples
 # query -> 2: http://gnudb.gnudb.org/~cddb/cddb.cgi?cmd=cddb+query+0D023E02+2+150+21815+576&hello=emailname+emailhost.com+applicationname+0.1&proto=5
 # read1:  http://gnudb.gnudb.org/~cddb/cddb.cgi?cmd=cddb+read+soundtrack+0D023E02&hello=emailname+emailhost.com+applicationname+0.1&proto=5
-# read2:  http://gnudb.gnudb.org/~cddb/cddb.cgi?cmd=cddb+read+blues+0D023E02&hello=emailname+emailhost.com+applicationname+0.1&proto=5
+# read2:  http://gnudb.gnudb.org/~cddb  /cddb.cgi?cmd=cddb+read+blues+0D023E02&hello=emailname+emailhost.com+applicationname+0.1&proto=5
 
 
 def int_to_hex(i: int, do_show_0x: bool = False) -> str:
@@ -186,24 +186,24 @@ class Freedb_Query_Query_Reader:
     """A class to read the result of a "query"-type query."""
 
     re_get_body: re.Pattern[str]
-    re_tripplets: re.Pattern[str]
+    re_quadruplets: re.Pattern[str]
 
     def __init__(self) -> None:
         """"""
         self.re_get_body: re.Pattern[str] = re.compile(
             r"^(\d{1,4})\sFound .+?, list follows \(until terminating `.'\) (.*) \.$"
         )
-        self.re_tripplets = re.compile(
+        self.re_quadruplets = re.compile(
             r"("
             + freedblib_info.FREEDB_CATEGORIES_REGEX_PREGROUP
-            + r") (?:[0-9a-fA-F]{8}) ([^\/]+?) / ([^\/]+?) (?="
+            + r") ([0-9a-fA-F]{8}) ([^\/]+?) / ([^\/]+?) (?="
             + freedblib_info.FREEDB_CATEGORIES_REGEX_PREGROUP
             + r")"
         )
 
-    def get_query_triplets(
+    def get_query_quadruplets(
         self, query_result: str
-    ) -> tuple[str, list[tuple[str, str, str]]] | list[None]:
+    ) -> tuple[str, list[tuple[str, str, str, str]]] | list[None]:
         """Parses the query result to get the query triplets.
 
         Args:
@@ -212,25 +212,23 @@ class Freedb_Query_Query_Reader:
         Returns:
             tuple[str,list[tuple[str, str, str]]]
                 str, return code
-                tuple[str,str,str], the query triplets. Empty if none.
+                tuple[str,str,str,str], the quadruplets triplets. Empty if none.
 
-            A triplet is a list of 3 strings: [category, title]
+            A quadruplets is a list of 4 strings: [category, disc_id, artist, album_name]
         """
 
         # get the body of the query
         match = self.re_get_body.match(query_result.strip())
         if match is None:
-            print("Match is None !")
             return []
         else:
-            print("Match is not None yet...")
             response_code = match.group(1)
             body = match.group(2) + " blues"
         # get the triplets
 
-        triplets: list[tuple[str, str, str]] = self.re_tripplets.findall(body)
+        quadruplets: list[tuple[str, str, str, str]] = self.re_quadruplets.findall(body)
 
-        return response_code, triplets
+        return response_code, quadruplets
 
 
 class Freedb_Query_Read_Reader:

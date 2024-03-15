@@ -168,9 +168,13 @@ class AudioAlbum(AudioTrackGroup):
 
             return discid_lib.calculate_disc_id(track_frame_indexes_plus)
 
-    def get_hex_disc_id(self) -> str:
+    def get_hex_disc_id(self, do_show_0x: bool = False) -> str:
         """Calculates the disc id for the album, which is used to query the freedb server. Hexadecimal representation of the disc id is returned."""
-        return hex(self.get_disc_id())
+
+        if do_show_0x:
+            return f"0x{format(self.get_disc_id(), 'x')}"
+        else:
+            return format(self.get_disc_id(), "x")
 
 
 # # test
