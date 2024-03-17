@@ -6,7 +6,7 @@ DEFAULT_USER = "emailname"
 DEFAULT_USER_EMAIL = "emailhost.com"
 DEFAULT_HOST = "pyfreedbutil_instance1"
 DEFAULT_APP = "pyfreedbutil"
-DEFAULT_VERSION = "0.0.4"
+DEFAULT_VERSION = "0.0.5"
 DEFAULT_PROTOCOL = "5"
 
 CDDB_SERVERS = [
