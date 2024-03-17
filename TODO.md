@@ -14,6 +14,7 @@
 [ ] XMCD (and query) READERS (readlines() )
 [ ] User agent for queries
 [ ] Regex opti / change to be cleaner (re_TTITLE...)
+[ ] easy create album from lengths in seconds
 
 https://www.freepascal.org/~michael/articles/cddb/cddb.pdf
 

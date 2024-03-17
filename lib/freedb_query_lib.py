@@ -2,6 +2,7 @@
 
 import re
 from typing import Any, Literal, Union
+from urllib import request
 
 from . import freedblib_info
 from .freedb_Objects import AudioAlbum, AudioTrack, AudioTrackGroup
@@ -37,7 +38,8 @@ class Freedb_Query:
 
     def __init__(
         self,
-        album: AudioAlbum,
+        album: AudioAlbum = AudioAlbum(),
+        disc_id: str = "",
         query_type: Union[Literal["query"], Literal["read"]] = "query",
         category: freedblib_info.FREEDB_CATEGORIES_TYPES = "rock",
         user: str = freedblib_info.DEFAULT_USER,
@@ -50,7 +52,8 @@ class Freedb_Query:
         """Initialize the query.
 
         Args:
-            album (AudioAlbum): The album to query for.
+            album (AudioAlbum, optional): The album to query for.
+            disc_id (str, optional): The disc id.
             category (freedblib_info.FREEDB_CATEGORIES_TYPES, optional, for "read" query type only): The category of the album. Defaults to "rock".
             user (str, optional): The user name. Defaults to DEFAULT_USER.
             user_email (str, optional): The user email. Defaults to DEFAULT_USER_EMAIL.
@@ -61,6 +64,7 @@ class Freedb_Query:
             query_type (str, Literal["query"] or Literal["read"]). Query type. Defaults to "query".
         """
         self.album = album
+        self.disc_id = disc_id
         self.user = user
         self.user_email = user_email
         self.host = host
@@ -77,19 +81,20 @@ class Freedb_Query:
             url (str): The url of the server.
         """
         # get the disc id
-        disc_id = int_to_hex(int(self.album.get_disc_id()), False)
-
-        # get the track count
-        track_count = len(self.album.tracks)
-
-        # get the track offsets
-        track_offsets = self.album.get_offsets_plus()
-
-        # get album length in seconds
-        album_length = track_offsets[-1] // 75
+        if len(self.disc_id) == 0:  # for queries
+            disc_id = int_to_hex(int(self.album.get_disc_id()), False)
+        else:
+            disc_id = self.disc_id
 
         if self.query_type == "query":
             # for queries
+            # get the track offsets
+            track_offsets = self.album.get_offsets_plus()
+            # get album length in seconds
+            album_length = track_offsets[-1] // 75
+            # get the track count
+            track_count = len(self.album.tracks)
+
             query_str = f"{url}?cmd=cddb+query+{disc_id}+{track_count}"
             for i in range(len(track_offsets) - 1):
                 query_str += f"+{track_offsets[i]}"
@@ -97,7 +102,6 @@ class Freedb_Query:
             return query_str
         elif self.query_type == "read":
             # for reads
-            # http://gnudb.gnudb.org/~cddb/cddb.cgi?cmd=cddb+read+rock+12345678&hello=joe+my.host.com+xmcd+2.1&proto=3
             query_str = f"{url}?cmd=cddb+read+{self.category}+{disc_id}"
             query_str += f"&hello={self.user}+{self.host}+{self.app}+{self.version}&proto={self.protocol}"
 
@@ -147,7 +151,9 @@ class Freedb_Query_Generator:
         self.query_type: Literal["query"] | Literal["read"] = query_type
         self.category: freedblib_info.FREEDB_CATEGORIES_TYPES = category
 
-    def generate_query(self, album: AudioAlbum) -> Freedb_Query:
+    def generate_query(
+        self, album: AudioAlbum = AudioAlbum(), disc_id: str = ""
+    ) -> Freedb_Query:
         """Generates a Freedb_Query with the given album.
 
         Args:
@@ -156,7 +162,8 @@ class Freedb_Query_Generator:
         Returns:
             Freedb_Query: The generated query."""
         return Freedb_Query(
-            album,
+            album=album,
+            disc_id=disc_id,
             query_type=self.query_type,
             category=self.category,
             user=self.user,
@@ -197,7 +204,7 @@ class Freedb_Query_Query_Reader:
 
     def get_query_quadruplets(
         self, query_result: list[bytes]
-    ) -> tuple[str, list[tuple[str, str, str, str]]] | list[None]:
+    ) -> tuple[str, list[tuple[str, str, str, str]]]:
         """Parses the query result to get the query triplets.
 
         Args:
@@ -343,16 +350,50 @@ class Freedb_Query_Read_Reader:
 class Freedb_Server:
     """A class to query a freedb server."""
 
-    pass
+    headers: dict[str, str] = {}
 
-    # headers = {
-    #     "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_11_5) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/50.0.2661.102 Safari/537.36"
-    # }
+    def __init__(
+        self,
+        headers: dict[str, str] = {"User-Agent": freedblib_info.USER_AGENT},
+        freedb_server: str = freedblib_info.CDDB_SERVERS[0],
+    ) -> None:
+        """Initialize the server.
 
-    # url = "http://gnudb.gnudb.org/~cddb/cddb.cgi?cmd=cddb+read+soundtrack+e5109c10&hello=emailname+emailhost.com+applicationname+0.1&proto=6"
-    # req = request.Request(url, headers=headers)
-    # # print(f"url={url}")
-    # with request.urlopen(url=req) as response:
-    #     data = response.readlines()
+        Args:
+            headers (dict[str, str], optional): The headers to send with the query.
+            freedb_server (str, optional): The url of the server. Defaults to CDDB_SERVERS[0].
 
-    # print(data)
+        headers defaults to {"User-Agent":"Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 5.1)"}, cueTools' default user-agent.
+        """
+        self.headers = headers
+        self.freedb_server = freedb_server
+
+    def query(self, query: Freedb_Query) -> list[bytes]:
+        """Sends a query to the server and returns the result (response.readlines()).
+
+        Args:
+            query (Freedb_Query): The query to send.
+
+        Returns:
+            list[bytes]: The result of the query, such as result.readlines().
+        """
+
+        req = request.Request(
+            url=query.get_query_string(self.freedb_server),
+            headers=self.headers,
+        )
+
+        with request.urlopen(url=req) as response:
+            lines = response.readlines()
+            return lines
+
+    def query_result_str(self, query_result: list[bytes], encoding="utf-8") -> str:
+        """Converts the result of a query to a string.
+
+        Args:
+            query_result (list[bytes]): The result of the query, such as result.readlines().
+
+        Returns:
+            str: The result of the query as a string.
+        """
+        return "".join([line.decode("utf-8") for line in query_result])

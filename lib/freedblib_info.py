@@ -44,3 +44,5 @@ FREEDB_CATEGORIES_TYPES = Union[
 FREEDB_CATEGORIES_REGEX_PREGROUP = (
     r"blues|classical|country|data|folk|jazz|newage|reggae|rock|soundtrack|misc"
 )
+
+USER_AGENT = "Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 5.1)"  # cueTools' default
