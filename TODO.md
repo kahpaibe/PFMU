@@ -12,6 +12,8 @@
 [+] dans class AudioAlbum: get offsets plus
 [+] query generator: only need to provide AudioAlbum
 [ ] XMCD (and query) READERS (readlines() )
+[ ] User agent for queries
+[ ] Regex opti / change to be cleaner (re_TTITLE...)
 
 https://www.freepascal.org/~michael/articles/cddb/cddb.pdf
 

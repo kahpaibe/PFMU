@@ -47,8 +47,8 @@ class AudioTrack:
     title: str = ""
 
     # init
-    def __init__(self, frame_count: int, artist: str = "", title: str = "") -> None:
-        self.frame_count = frame_count  # required
+    def __init__(self, frame_count: int = 0, artist: str = "", title: str = "") -> None:
+        self.frame_count = frame_count
         self.artist = artist
         self.title = title
 
@@ -123,6 +123,8 @@ class AudioAlbum(AudioTrackGroup):
         audio_track_group: AudioTrackGroup = AudioTrackGroup(),
         title: str = "",
         artists: str = "",
+        year: str = "",
+        genre: str = "",
     ) -> None:
         """Initialize the AudioAlbum. Construct from a list of tracks or from an AudioTrackGroup.
 
@@ -130,13 +132,17 @@ class AudioAlbum(AudioTrackGroup):
             tracks (list[AudioTrack]): The tracks of the album. -> To construct from a list of tracks.
             audio_track_group (AudioTrackGroup): The tracks of the album. -> To construct from an AudioTrackGroup.
             title (str): The title of the album.
-            artists (str): The artist of the album."""
+            artists (str): The artist of the album.
+            year (str): The year of the album.
+            genre (str): The genre of the album."""
         if tracks:
             super().__init__(tracks=tracks)  # construct form tracks
         else:
             super().__init__(audio_track_group.tracks)  # construct form AudioTrackGroup
         self.title = title
         self.artist = artists
+        self.year = year
+        self.genre = genre
 
     # Methods
     def __str__(self) -> str:

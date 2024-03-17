@@ -4,12 +4,7 @@ import re
 from typing import Any, Literal, Union
 
 from . import freedblib_info
-from .freedb_Objects import AudioAlbum
-
-# samples
-# query -> 2: http://gnudb.gnudb.org/~cddb/cddb.cgi?cmd=cddb+query+0D023E02+2+150+21815+576&hello=emailname+emailhost.com+applicationname+0.1&proto=5
-# read1:  http://gnudb.gnudb.org/~cddb/cddb.cgi?cmd=cddb+read+soundtrack+0D023E02&hello=emailname+emailhost.com+applicationname+0.1&proto=5
-# read2:  http://gnudb.gnudb.org/~cddb  /cddb.cgi?cmd=cddb+read+blues+0D023E02&hello=emailname+emailhost.com+applicationname+0.1&proto=5
+from .freedb_Objects import AudioAlbum, AudioTrack, AudioTrackGroup
 
 
 def int_to_hex(i: int, do_show_0x: bool = False) -> str:
@@ -27,9 +22,6 @@ def int_to_hex(i: int, do_show_0x: bool = False) -> str:
         return format(i, "x")
 
 
-# QUERY = [FreedbHelper.Commands.CMD_QUERY,
-# 		querystring,]
-# QUERYSTRING = [ HEXCDDBID, TRACKCOUNT, "+TRACKOFFSET x n", toc.length
 class Freedb_Query:
     """A query to send to a freedb server."""
 
@@ -47,7 +39,7 @@ class Freedb_Query:
         self,
         album: AudioAlbum,
         query_type: Union[Literal["query"], Literal["read"]] = "query",
-        category: freedblib_info.FREEDB_CATEGORIES_TYPE = "rock",
+        category: freedblib_info.FREEDB_CATEGORIES_TYPES = "rock",
         user: str = freedblib_info.DEFAULT_USER,
         user_email: str = freedblib_info.DEFAULT_USER_EMAIL,
         host: str = freedblib_info.DEFAULT_HOST,
@@ -59,7 +51,7 @@ class Freedb_Query:
 
         Args:
             album (AudioAlbum): The album to query for.
-            category (freedblib_info.FREEDB_CATEGORIES_TYPE, optional, for "read" query type only): The category of the album. Defaults to "rock".
+            category (freedblib_info.FREEDB_CATEGORIES_TYPES, optional, for "read" query type only): The category of the album. Defaults to "rock".
             user (str, optional): The user name. Defaults to DEFAULT_USER.
             user_email (str, optional): The user email. Defaults to DEFAULT_USER_EMAIL.
             host (str, optional): The host. Defaults to DEFAULT_HOST.
@@ -128,7 +120,7 @@ class Freedb_Query_Generator:
     def __init__(
         self,
         query_type: Union[Literal["query"], Literal["read"]] = "query",
-        category: freedblib_info.FREEDB_CATEGORIES_TYPE = "rock",
+        category: freedblib_info.FREEDB_CATEGORIES_TYPES = "rock",
         user: str = freedblib_info.DEFAULT_USER,
         user_email: str = freedblib_info.DEFAULT_USER_EMAIL,
         host: str = freedblib_info.DEFAULT_HOST,
@@ -153,7 +145,7 @@ class Freedb_Query_Generator:
         self.version = version
         self.protocol = protocol
         self.query_type: Literal["query"] | Literal["read"] = query_type
-        self.category: freedblib_info.FREEDB_CATEGORIES_TYPE = category
+        self.category: freedblib_info.FREEDB_CATEGORIES_TYPES = category
 
     def generate_query(self, album: AudioAlbum) -> Freedb_Query:
         """Generates a Freedb_Query with the given album.
@@ -176,38 +168,40 @@ class Freedb_Query_Generator:
         )
 
 
-class Freedb_Server:
-    """A class to query a freedb server."""
-
-    pass
-
-
 class Freedb_Query_Query_Reader:
     """A class to read the result of a "query"-type query."""
 
-    re_get_body: re.Pattern[str]
-    re_quadruplets: re.Pattern[str]
+    re_quadruplets = re.compile(
+        r"("
+        + freedblib_info.FREEDB_CATEGORIES_REGEX_PREGROUP
+        + r") ([0-9a-fA-F]{8}) ([^\/]+?) / ([^\/]+)$"
+    )
 
     def __init__(self) -> None:
         """"""
-        self.re_get_body: re.Pattern[str] = re.compile(
-            r"^(\d{1,4})\sFound .+?, list follows \(until terminating `.'\) (.*) \.$"
-        )
-        self.re_quadruplets = re.compile(
-            r"("
-            + freedblib_info.FREEDB_CATEGORIES_REGEX_PREGROUP
-            + r") ([0-9a-fA-F]{8}) ([^\/]+?) / ([^\/]+?) (?="
-            + freedblib_info.FREEDB_CATEGORIES_REGEX_PREGROUP
-            + r")"
-        )
+        pass
+
+    def get_header_error_code(self, query_result: list[bytes]) -> tuple[str, str]:
+        """Parses the query result to get the header and error code.
+
+        Args:
+            query_result (list[bytes]): The result of the query, such as result.readlines().
+
+        Returns:
+            str: The error code.
+        """
+        # get the header and error code
+        header = query_result[0].decode("utf-8")
+        error_code = header.split(" ")[0]
+        return header, error_code
 
     def get_query_quadruplets(
-        self, query_result: str
+        self, query_result: list[bytes]
     ) -> tuple[str, list[tuple[str, str, str, str]]] | list[None]:
         """Parses the query result to get the query triplets.
 
         Args:
-            query_result (str): The result of the query.
+            query_result (list[bytes]): The result of the query, such as result.readlines().
 
         Returns:
             tuple[str,list[tuple[str, str, str]]]
@@ -216,36 +210,149 @@ class Freedb_Query_Query_Reader:
 
             A quadruplets is a list of 4 strings: [category, disc_id, artist, album_name]
         """
+        # get the header and error code
+        header, error_code = self.get_header_error_code(query_result)
 
-        # get the body of the query
-        match = self.re_get_body.match(query_result.strip())
-        if match is None:
-            return []
-        else:
-            response_code = match.group(1)
-            body = match.group(2) + " blues"
-        # get the triplets
+        # get release quadruplets
+        quadruplets: list[tuple[str, str, str, str]] = []
+        for i in range(1, len(query_result) - 1):
+            line = query_result[i].decode("utf-8").replace("\r", "").replace("\n", "")
 
-        quadruplets: list[tuple[str, str, str, str]] = self.re_quadruplets.findall(body)
+            match = self.re_quadruplets.match(line)
+            if match:
+                category: str = match.group(1)
+                discid: str = match.group(2)
+                artist: str = match.group(3)
+                album: str = match.group(4)
+                quadruplets.append((category, discid, artist, album))
 
-        return response_code, quadruplets
+        return error_code, quadruplets
 
 
 class Freedb_Query_Read_Reader:
     """A class to read the result of a "read"-type query."""
 
-    re_get_body: re.Pattern[str]
-    re_tripplets: re.Pattern[str]
+    re_releases = re.compile(r"")
+    re_DISCID = re.compile(r"^DISCID=(?P<DiscId>.*)")
+    re_DTITLE = re.compile(r"^DTITLE=(?P<DiscTitle>.*)")
+    re_DYEAR = re.compile(r"^DYEAR=(?P<DiscYear>.*)")
+    re_DGENRE = re.compile(r"^DGENRE=(?P<DiscGenre>.*)")
+    re_TTITLE = re.compile(r"^TTITLE(?P<TrackNum>[^=]*)=(?P<TrackTitle>.*)")
+
+    re_INLINE_TRACK_ARTIST = re.compile(r"^(?P<TrackArtist>.*) / (?P<TrackTitle>.*)$")
 
     def __init__(self) -> None:
         """"""
-        self.re_get_body: re.Pattern[str] = re.compile(
-            r"^(\d{1,4})\sFound .+?, list follows \(until terminating `.'\) (.*) \.$"
-        )
-        self.re_releases = re.compile(r"")
+        pass
+
+    def get_header_error_code(self, query_result: list[bytes]) -> tuple[str, str]:
+        """Parses the query result to get the header and error code.
+
+        Args:
+            query_result (list[bytes]): The result of the query, such as result.readlines().
+
+        Returns:
+            str: The error code.
+        """
+        # get the header and error code
+        header = query_result[0].decode("utf-8")
+        error_code = header.split(" ")[0]
+        return header, error_code
 
     def get_read_releases(
-        self, query_result: str
-    ) -> tuple[str, list[list[Any]]] | list[None]:
+        self, query_result: list[bytes], encoding="utf-8"
+    ) -> tuple[str, AudioAlbum]:
+        """Parses the "read"-query result to get releases metadata.
 
-        return []
+        Args:
+            query_result (list[bytes]): The result of the query, such as result.readlines().
+            encoding (str, optional): The encoding of the query result. Defaults to "utf-8".
+
+        Returns:
+            tuple[str, AudioAlbum]
+                str, return code
+                AudioAlbum, the album metadata. Empty if none.
+        """
+        # get the header and error code
+        header, error_code = self.get_header_error_code(query_result)
+
+        # parse lines, get releases metadata
+
+        # release_index = ( # unused: for now, I havent found a read with mutliple releases, may not exist
+        #     -1
+        # )  # goes up by 1 for each release, the first release is at index 0
+
+        release: dict[str, str] = {
+            "DISCID": "",
+            "DTITLE": "",
+            "DYEAR": "",
+            "DGENRE": "",
+        }
+        tracklist: list[tuple[str, str]] = []  # (track_artist, track_title), "" if none
+        for i in range(1, len(query_result) - 1):
+            line = query_result[i].decode(encoding).replace("\r", "").replace("\n", "")
+
+            match = self.re_DISCID.match(line)
+            if match:
+                disc_id: str = match.group("DiscId")
+                release["DISCID"] = disc_id
+
+            match = self.re_DTITLE.match(line)
+            if match:
+                disc_title: str = match.group("DiscTitle")
+                release["DTITLE"] = disc_title
+
+            match = self.re_DYEAR.match(line)
+            if match:
+                disc_year: str = match.group("DiscYear")
+                release["DYEAR"] = disc_year
+
+            match = self.re_DGENRE.match(line)
+            if match:
+                disc_genre: str = match.group("DiscGenre")
+                release["DGENRE"] = disc_genre
+
+            match = self.re_TTITLE.match(line)
+            if match:
+                track_num: str = match.group("TrackNum")
+                track_title: str = match.group("TrackTitle")
+
+                # test if inline track artist
+                inline_match = self.re_INLINE_TRACK_ARTIST.match(track_title)
+                if inline_match:  # if artist found
+                    track_artist: str = inline_match.group("TrackArtist")
+                    track_title: str = inline_match.group("TrackTitle")
+                else:  # artist not found
+                    track_artist = ""
+
+                tracklist.append((track_artist, track_title))
+        # create the corresponding album, without the track offsets
+        tracks: list[AudioTrack] = []
+        for i in range(len(tracklist)):
+            track = AudioTrack(artist=tracklist[i][0], title=tracklist[i][1])
+            tracks.append(track)
+        album = AudioAlbum(
+            tracks=tracks,
+            title=release["DTITLE"],
+            year=release["DYEAR"],
+            genre=release["DGENRE"],
+        )
+        return error_code, album
+
+
+class Freedb_Server:
+    """A class to query a freedb server."""
+
+    pass
+
+    # headers = {
+    #     "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_11_5) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/50.0.2661.102 Safari/537.36"
+    # }
+
+    # url = "http://gnudb.gnudb.org/~cddb/cddb.cgi?cmd=cddb+read+soundtrack+e5109c10&hello=emailname+emailhost.com+applicationname+0.1&proto=6"
+    # req = request.Request(url, headers=headers)
+    # # print(f"url={url}")
+    # with request.urlopen(url=req) as response:
+    #     data = response.readlines()
+
+    # print(data)

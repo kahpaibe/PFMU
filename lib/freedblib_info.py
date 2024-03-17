@@ -27,7 +27,7 @@ FREEDB_CATEGORIES = [
     "soundtrack",
     "misc",
 ]
-FREEDB_CATEGORIES_TYPE = Union[
+FREEDB_CATEGORIES_TYPES = Union[
     Literal["blues"],
     Literal["classical"],
     Literal["country"],
